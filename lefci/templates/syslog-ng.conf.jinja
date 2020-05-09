@@ -1,0 +1,92 @@
+@version: 3.24
+@include "scl.conf"
+@define logpath "/var/log/syslog-ng"
+
+options {
+    use-dns(yes);
+    dns-cache-size(1000);
+    dns-cache-expire(3600);
+    ts-format(iso);
+    create-dirs(yes);
+    dir-perm(0755);
+    perm(0664);
+};
+
+source s_default {
+  default-network-drivers();
+};
+
+{%- for tree in log_trees %}
+{# create filters for root nodes #}
+{%- for filter in tree.filters %}
+{%- if filter.field == 'unknown' %}
+filter f_{{tree.id}}_{{loop.index}} {
+    not(
+    {%- for node in log_trees %}
+        {%- for f in t.filters %}
+        {%- if f.field != 'unknown' %}
+        or filter( f_{{node.id}}_{{loop.index}} );
+        {%- endif %}
+        {%- endfor %}
+    {%- endfor %}
+    );
+};
+{%- else %}
+filter f_{{tree.id}}_{{loop.index}} { {{filter.field}}("{{filter.pattern}}"); };
+{%- endif %}
+{%- endfor %}
+
+{# create filters for child nodes #}
+{%- for child in tree.children recursive %}
+{%- for child_filter in child.filters %}
+{%- if child_filter.field == 'unknown' %}
+filter f_{{child.id}}_{{loop.index}} {
+    not(
+    {%- for c in tree.children %}
+    {%- set c_index = loop.index %}
+    {%- for f in c.filters %}
+        {%- if f.field != 'unknown' %}
+        {% if c_index != 1 or loop.index != 1 %}or {% endif %}filter( f_{{c.id}}_{{loop.index}} );
+        {%- endif %}
+    {%- endfor %}
+    {%- endfor %}
+    );
+};
+{%- else %}
+filter f_{{child.id}}_{{loop.index}} { {{child_filter.field}}("{{child_filter.pattern}}"); };
+{%- endif %}
+
+{%- endfor %}
+{{ loop(child.children) }}
+{%- endfor %}
+
+{# create log-paths #}
+log{source(s_default);
+{%- for filter in tree.filters %}
+    filter( f_{{tree.id}}_{{loop.index}} );
+{%- endfor %}
+{%- for action in tree.actions %}
+    {%- if action.action == 'file' %}
+    destination{ {{action.action}}("{{action.filepath}}"); };
+    {%- elif action.action == 'network' %}
+    destination{ {{action.action}}("{{action.host}}", port({{action.port}})); };
+    {%- endif %}
+{%- endfor %}
+{%- for child in tree.children recursive %}
+    # {{child.title}}
+    log{
+    {%- for filter in child.filters %}
+        filter( f_{{child.id}}_{{loop.index}} );
+    {%- endfor %}
+    {%- for action in child.actions %}
+        {%- if action.action == 'file' %}
+        destination{ {{action.action}}("{{action.filepath}}"); };
+        {%- elif action.action == 'network' %}
+        destination{ {{action.action}}("{{action.host}}", port({{action.port}})); };
+        {%- endif %}
+    {%- endfor %}
+    };
+    {{ loop(child.children)|indent(4, first=True) }}
+{%- endfor %}
+};
+{% endfor %}

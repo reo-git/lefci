@@ -1,0 +1,16 @@
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# python
+venv
+.pytest_cache
+configs
+__pycache__
+
+/configs
