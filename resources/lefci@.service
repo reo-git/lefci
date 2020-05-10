@@ -1,0 +1,13 @@
+[Unit]
+Description=Gunicorn instance to serve lefci
+After=network.target
+
+[Service]
+User=%i
+Group=www-data
+WorkingDirectory=/home/%i/lefci
+Environment="PATH=/home/%i/lefci/venv/bin"
+ExecStart=/home/%i/lefci/venv/bin/gunicorn --workers 4 --bind unix:/tmp/lefci.sock -m 007 --error-logfile error.log --access-logfile access.log run:app
+
+[Install]
+WantedBy=multi-user.target
